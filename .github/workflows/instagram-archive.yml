@@ -46,35 +46,18 @@ jobs:
           rclone copy gdrive:SocialArchive/_state state --ignore-errors || true
           cp state/latest-stamps.ini archive/instagram/latest-stamps.ini 2>/dev/null || true
 
-      - name: Archive Instagram accounts
+      - name: Archive Instagram stories from followees
         env:
           IG_USERNAME: ${{ secrets.IG_USERNAME }}
         run: |
-          while IFS= read -r account || [ -n "$account" ]; do
-            account="$(echo "$account" | xargs)"
-
-            if [ -z "$account" ]; then
-              continue
-            fi
-
-            if [[ "$account" == \#* ]]; then
-              continue
-            fi
-
-            echo "Checking Instagram account: $account"
-
-            instaloader \
-              --sessionfile "session-instagram" \
-              --login "$IG_USERNAME" \
-              --dirname-pattern "archive/instagram/{profile}" \
-              --filename-pattern "{date_utc}_UTC_{shortcode}" \
-              --stories \
-              --highlights \
-              --reels \
-              --igtv \
-              --no-profile-pic \
-              --latest-stamps "archive/instagram/latest-stamps.ini" \
-              "$account" || true
+          instaloader \
+            --sessionfile "session-instagram" \
+            --login "$IG_USERNAME" \
+            --dirname-pattern "archive/instagram/{profile}" \
+            --filename-pattern "{date_utc}_UTC_{shortcode}" \
+            --no-profile-pic \
+            --latest-stamps "archive/instagram/latest-stamps.ini" \
+            :stories || true
 
             sleep 20
           done < accounts/instagram.txt
