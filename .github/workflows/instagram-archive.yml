@@ -24,7 +24,7 @@ jobs:
       - name: Install tools
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install --upgrade instaloader
+          python3 -m pip install --upgrade git+https://github.com/instaloader/instaloader.git
           sudo apt-get update
           sudo apt-get install -y rclone ffmpeg
 
