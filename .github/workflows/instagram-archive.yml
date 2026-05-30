@@ -1,0 +1,90 @@
+name: Instagram Archive
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Make folders
+        run: |
+          mkdir -p archive/instagram
+          mkdir -p accounts
+          mkdir -p state
+          mkdir -p ~/.config/rclone
+
+      - name: Install tools
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade instaloader
+          sudo apt-get update
+          sudo apt-get install -y rclone ffmpeg
+
+      - name: Restore secrets
+        env:
+          IG_USERNAME: ${{ secrets.IG_USERNAME }}
+          IG_SESSION_B64: ${{ secrets.IG_SESSION_B64 }}
+          RCLONE_CONFIG_B64: ${{ secrets.RCLONE_CONFIG_B64 }}
+          IG_ACCOUNTS: ${{ secrets.IG_ACCOUNTS }}
+        run: |
+          printf '%s' "$IG_SESSION_B64" | base64 -d > session-instagram
+          printf '%s' "$RCLONE_CONFIG_B64" | base64 -d > ~/.config/rclone/rclone.conf
+          printf '%s\n' "$IG_ACCOUNTS" > accounts/instagram.txt
+          sed -i 's/\r$//' accounts/instagram.txt
+
+      - name: Pull previous state from Google Drive
+        run: |
+          rclone mkdir gdrive:SocialArchive/_state || true
+          rclone copy gdrive:SocialArchive/_state state --ignore-errors || true
+          cp state/latest-stamps.ini archive/instagram/latest-stamps.ini 2>/dev/null || true
+
+      - name: Archive Instagram accounts
+        env:
+          IG_USERNAME: ${{ secrets.IG_USERNAME }}
+        run: |
+          while IFS= read -r account || [ -n "$account" ]; do
+            account="$(echo "$account" | xargs)"
+
+            if [ -z "$account" ]; then
+              continue
+            fi
+
+            if [[ "$account" == \#* ]]; then
+              continue
+            fi
+
+            echo "Checking Instagram account: $account"
+
+            instaloader \
+              --sessionfile "session-instagram" \
+              --login "$IG_USERNAME" \
+              --dirname-pattern "archive/instagram/{profile}" \
+              --filename-pattern "{date_utc}_UTC_{shortcode}" \
+              --stories \
+              --highlights \
+              --reels \
+              --igtv \
+              --no-profile-pic \
+              --latest-stamps "archive/instagram/latest-stamps.ini" \
+              "$account" || true
+
+            sleep 20
+          done < accounts/instagram.txt
+
+      - name: Upload archive to Google Drive
+        run: |
+          rclone copy archive/instagram gdrive:SocialArchive/Instagram --ignore-existing
+
+      - name: Save state to Google Drive
+        run: |
+          mkdir -p state
+          cp archive/instagram/latest-stamps.ini state/latest-stamps.ini 2>/dev/null || true
+          rclone copy state gdrive:SocialArchive/_state
